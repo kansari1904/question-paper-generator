@@ -1,0 +1,101 @@
+# ==============================
+# Python
+# ==============================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# ==============================
+# FastAPI / Python tools
+# ==============================
+
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==============================
+# IDE / Editors
+# ==============================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================
+# OS
+# ==============================
+
+.DS_Store
+Thumbs.db
+
+# ==============================
+# Logs
+# ==============================
+
+*.log
+logs/
+
+# ==============================
+# Node / React Frontend
+# ==============================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+
+# Frontend environment variables
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# ==============================
+# Generated / Temporary Files
+# ==============================
+
+*.tmp
+*.temp
+*.bak
+
+# ==============================
+# AI / Local Data
+# ==============================
+
+# Local vector databases
+chroma_db/
+vector_db/
+
+# Generated embeddings / indexes
+embeddings/
+*.faiss
+*.pkl
+
+# ==============================
+# Secrets / API Keys
+# ==============================
+
+*.key
+*.pem
+secrets.json
+credentials.json
