@@ -41,16 +41,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from models import (
+from app.models import (
     ConstraintReport,
     Deviation,
     PaperRequest,
     Question,
 )
-from feasibility import FeasibilityReport
-from matrix_fit import MatrixFitResult
-from selector import SelectionResult
-from validator import Targets
+from app.engine.feasibility import FeasibilityReport
+from app.engine.matrix_fit import MatrixFitResult
+from app.engine.selector import SelectionResult
+from app.engine.validator import Targets
 
 TOLERANCE_PCT = 3.0  # percentage points; deviations smaller than this are not reported
 
@@ -70,18 +70,21 @@ def build_constraint_report(
 
     # --- 1. Total marks (highest priority; must be exact whenever possible) -
     if actual_total != targets.total_marks:
-        deviations.append(Deviation(
-            dimension="total_marks",
-            requested_pct=100.0,
-            actual_pct=round(100.0 * actual_total / targets.total_marks, 1)
-            if targets.total_marks else 0.0,
-            reason=(
-                f"Requested {targets.total_marks} marks, generated "
-                f"{actual_total} marks. {' '.join(selection.substitutions)}"
-                if selection.substitutions else
-                f"Requested {targets.total_marks} marks, generated {actual_total} marks."
-            ),
-        ))
+        deviations.append(
+            Deviation(
+                dimension="total_marks",
+                requested_pct=100.0,
+                actual_pct=round(100.0 * actual_total / targets.total_marks, 1)
+                if targets.total_marks
+                else 0.0,
+                reason=(
+                    f"Requested {targets.total_marks} marks, generated "
+                    f"{actual_total} marks. {' '.join(selection.substitutions)}"
+                    if selection.substitutions
+                    else f"Requested {targets.total_marks} marks, generated {actual_total} marks."
+                ),
+            )
+        )
 
     # --- Build evidence of genuine supply scarcity, per dimension ------------
     # Only dimensions with a real feasibility gap, an unmet cell, or a
@@ -107,7 +110,9 @@ def build_constraint_report(
 
     for cell, unmet in selection.unmet_marks_by_cell.items():
         topic, difficulty, qtype = cell
-        reason = f"{unmet} marks for this cell could not be sourced anywhere in the bank."
+        reason = (
+            f"{unmet} marks for this cell could not be sourced anywhere in the bank."
+        )
         topic_supply_evidence.setdefault(topic, reason)
         qtype_supply_evidence.setdefault(qtype, reason)
         difficulty_supply_evidence.setdefault(difficulty, reason)
@@ -117,7 +122,11 @@ def build_constraint_report(
     for q in selected:
         actual_topic_marks[q.topic.value] += q.marks
     _add_dimension_deviations(
-        deviations, "topic", targets.topic_marks, actual_topic_marks, actual_total,
+        deviations,
+        "topic",
+        targets.topic_marks,
+        actual_topic_marks,
+        actual_total,
         supply_backed_reasons=topic_supply_evidence,
     )
 
@@ -126,7 +135,11 @@ def build_constraint_report(
     for q in selected:
         actual_qtype_marks[q.qtype.value] += q.marks
     _add_dimension_deviations(
-        deviations, "qtype", targets.qtype_marks, actual_qtype_marks, actual_total,
+        deviations,
+        "qtype",
+        targets.qtype_marks,
+        actual_qtype_marks,
+        actual_total,
         supply_backed_reasons=qtype_supply_evidence,
     )
 
@@ -135,7 +148,11 @@ def build_constraint_report(
     for q in selected:
         actual_difficulty_marks[q.difficulty.value] += q.marks
     _add_dimension_deviations(
-        deviations, "difficulty", targets.difficulty_marks, actual_difficulty_marks, actual_total,
+        deviations,
+        "difficulty",
+        targets.difficulty_marks,
+        actual_difficulty_marks,
+        actual_total,
         supply_backed_reasons=difficulty_supply_evidence,
     )
 
@@ -199,15 +216,17 @@ def _add_dimension_deviations(
 
         requested_pct_of_total = (
             100.0 * requested / sum(requested_marks.values())
-            if sum(requested_marks.values()) else 0.0
+            if sum(requested_marks.values())
+            else 0.0
         )
-        actual_pct_of_total = (
-            100.0 * actual / actual_total if actual_total else 0.0
-        )
+        actual_pct_of_total = 100.0 * actual / actual_total if actual_total else 0.0
 
         if abs(requested_pct_of_total - actual_pct_of_total) > TOLERANCE_PCT:
             if key in supply_backed_reasons:
-                cause = supply_backed_reasons[key]
+                # Gap.reason (feasibility.py) already ends in its own
+                # period -- strip any trailing punctuation before splicing
+                # it into this sentence so it never doubles up ("..").
+                cause = supply_backed_reasons[key].rstrip(". ")
             else:
                 cause = (
                     "not a bank shortage -- caused by the selector's final "
@@ -215,13 +234,15 @@ def _add_dimension_deviations(
                     "exact total-marks target and can shift individual "
                     "topic/qtype/difficulty shares slightly in the process"
                 )
-            deviations.append(Deviation(
-                dimension=f"{dimension_prefix}.{key}",
-                requested_pct=round(requested_pct_of_total, 1),
-                actual_pct=round(actual_pct_of_total, 1),
-                reason=(
-                    f"Requested {requested_pct_of_total:.1f}% {key} "
-                    f"({requested:.1f} marks), achieved "
-                    f"{actual_pct_of_total:.1f}% ({actual} marks) -- {cause}."
-                ),
-            ))
+            deviations.append(
+                Deviation(
+                    dimension=f"{dimension_prefix}.{key}",
+                    requested_pct=round(requested_pct_of_total, 1),
+                    actual_pct=round(actual_pct_of_total, 1),
+                    reason=(
+                        f"Requested {requested_pct_of_total:.1f}% {key} "
+                        f"({requested:.1f} marks), achieved "
+                        f"{actual_pct_of_total:.1f}% ({actual} marks) -- {cause}."
+                    ),
+                )
+            )

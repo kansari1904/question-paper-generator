@@ -35,7 +35,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
-from models import Question, QuestionType, QTYPE_MARKS
+from app.models import Question, QuestionType, QTYPE_MARKS
 
 Cell = tuple[str, str, str]
 DIFFICULTY_ORDER = ["Easy", "Medium", "Hard"]

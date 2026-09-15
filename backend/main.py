@@ -24,20 +24,25 @@ from collections import defaultdict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models import (
+from app.models import (
     PaperRequest,
     PaperResponse,
     Question,
     SwapRequest,
     SwapResponse,
 )
-from validator import ValidationError, Targets, compute_targets
-from feasibility import check_feasibility
-from matrix_fit import fit_matrix
-from selector import SelectionResult, select_questions
-from resolver import build_constraint_report
-from composer import compose_paper
-from swap import swap_question
+from app.engine.validator import ValidationError, Targets, compute_targets
+
+from app.engine.feasibility import check_feasibility
+
+from app.engine.matrix_fit import fit_matrix
+
+from app.engine.selector import SelectionResult, select_questions
+
+from app.engine.resolver import build_constraint_report
+
+from app.engine.composer import compose_paper
+from app.engine.swap import swap_question
 
 app = FastAPI(
     title="Smart Question Paper Generator (Science)",
@@ -52,7 +57,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BANK_PATH = pathlib.Path(__file__).parent / "data" / "question_bank.json"
+BANK_PATH = pathlib.Path(__file__).parent/"app"/"data"/"question_bank.json"
 
 
 def _load_bank() -> list[Question]:

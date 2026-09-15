@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from validator import Targets
+from app.engine.validator import Targets
 
 Cell = tuple[str, str, str]  # (topic, difficulty, qtype)
 

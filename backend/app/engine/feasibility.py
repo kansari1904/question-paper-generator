@@ -28,8 +28,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from models import Question, QuestionType, QTYPE_MARKS
-from validator import Targets
+from app.models import Question, QuestionType, QTYPE_MARKS
+
+from app.engine.validator import Targets
 
 
 @dataclass

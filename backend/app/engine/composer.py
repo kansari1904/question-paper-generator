@@ -33,7 +33,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from models import PaperSection, Question, QuestionType, QTYPE_MARKS
+from app.models import PaperSection, Question, QuestionType, QTYPE_MARKS
 
 DIFFICULTY_ORDER = ["Easy", "Medium", "Hard"]
 QTYPE_ORDER = ["MCQ", "Short", "Long"]

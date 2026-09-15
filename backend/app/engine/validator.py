@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 from pydantic import ValidationError as PydanticValidationError
 
-from models import PaperRequest, QTYPE_MARKS, QuestionType
+from app.models import PaperRequest, QTYPE_MARKS, QuestionType
 
 
 class ValidationError(Exception):

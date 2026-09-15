@@ -41,8 +41,9 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from models import Question, QuestionType, QTYPE_MARKS
-from matrix_fit import MatrixFitResult, Cell, TOPICS, DIFFICULTIES, QTYPES
+from app.models import Question, QuestionType, QTYPE_MARKS
+
+from app.engine.matrix_fit import MatrixFitResult, Cell, TOPICS, DIFFICULTIES, QTYPES
 
 DIFFICULTY_ORDER = ["Easy", "Medium", "Hard"]
 
