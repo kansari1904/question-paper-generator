@@ -109,11 +109,7 @@ function Home() {
     try {
       setIsGenerating(true);
 
-      console.log("Sending payload:", payload);
-
       const result = await generatePaper(payload);
-
-      console.log("Generated paper:", result);
 
       setGeneratedPaper(result);
 
