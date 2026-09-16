@@ -1,23 +1,3 @@
-"""
-engine/validator.py
-
-Stage 0 of the pipeline: input validation.
-
-Responsibilities:
-- Parse raw request dicts into a validated PaperRequest (delegates % sum
-  checks to the Pydantic models, which already enforce them).
-- Convert each distribution (difficulty, topic, qtype) from percentages
-  into target marks, anchored to total_marks. This is the "everything is
-  computed from total marks, not question count" rule from the brief.
-- Catch the marks-scheme-specific issue: qtype targets must be at least
-  loosely reachable given fixed marks-per-question (MCQ=1, Short=3, Long=5).
-  A request for 1% Long on a 10-mark paper (0.1 marks) is flagged here,
-  not silently rounded away three stages later.
-
-This module raises ValidationError (defined below) with a clear, teacher-
-readable message. It never touches the question bank — that's Stage 2's job.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,32 +1,10 @@
-"""
-models.py
-
-Pydantic schema definitions for the Smart Question Paper Generator (Science).
-
-These models are the single source of truth for data shapes used across
-the engine (validator, feasibility, matrix_fit, selector, resolver,
-composer, swap) and the FastAPI routes in main.py.
-
-Design notes:
-- Marks per question-type are fixed by assignment scope: MCQ = 1, Short = 3,
-  Long = 5. This is enforced via QTYPE_MARKS and validated on Question
-  creation so a malformed bank entry fails fast at load time, not at
-  generation time.
-- Topic/Difficulty/QuestionType are enums, not free strings, so the engine
-  never has to defensively handle typos like "med" vs "Medium".
-"""
-
 from __future__ import annotations
 
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-
-# ---------------------------------------------------------------------------
-# Enums
-# ---------------------------------------------------------------------------
 
 class Topic(str, Enum):
     PHYSICS = "Physics"
@@ -51,7 +29,6 @@ class QuestionSource(str, Enum):
     LLM_ENRICHED = "llm-enriched"
 
 
-# Fixed marks per question type (assignment assumption, documented in README).
 QTYPE_MARKS: dict[QuestionType, int] = {
     QuestionType.MCQ: 1,
     QuestionType.SHORT: 3,
@@ -59,12 +36,8 @@ QTYPE_MARKS: dict[QuestionType, int] = {
 }
 
 
-# ---------------------------------------------------------------------------
-# Question bank entry
-# ---------------------------------------------------------------------------
-
 class Question(BaseModel):
-    id: str = Field(..., description="Stable unique id, e.g. SCI-PHY-014")
+    id: str
     text: str
     subject: str = "Science"
     topic: Topic
@@ -72,35 +45,44 @@ class Question(BaseModel):
     difficulty: Difficulty
     qtype: QuestionType
     marks: int
-    options: Optional[list[str]] = Field(
-        default=None, description="Required for MCQ, must be null otherwise"
-    )
-    answer: str
+    options: Optional[list[str]] = None
+    answer: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     source: QuestionSource = QuestionSource.SEED
 
     @model_validator(mode="after")
-    def _validate_marks_and_options(self) -> "Question":
-        expected = QTYPE_MARKS[self.qtype]
-        if self.marks != expected:
+    def validate_question(self) -> "Question":
+        expected_marks = QTYPE_MARKS[self.qtype]
+
+        # Validate marks based on question type
+        if self.marks != expected_marks:
             raise ValueError(
-                f"{self.id}: qtype {self.qtype} must have marks={expected}, "
-                f"got {self.marks}"
+                f"{self.qtype.value} questions must have "
+                f"{expected_marks} marks, got {self.marks}."
             )
+
+        # MCQ validation
         if self.qtype == QuestionType.MCQ:
             if not self.options or len(self.options) != 4:
-                raise ValueError(f"{self.id}: MCQ must have exactly 4 options")
+                raise ValueError("MCQ questions must contain exactly 4 options.")
+
+            if not self.answer:
+                raise ValueError("MCQ questions must contain an answer.")
+
+        # Short / Long validation
         else:
             if self.options is not None:
                 raise ValueError(
-                    f"{self.id}: options must be null for non-MCQ questions"
+                    f"{self.qtype.value} questions must not contain options."
                 )
+
+            if not self.answer:
+                raise ValueError(
+                    f"{self.qtype.value} questions must contain an answer."
+                )
+
         return self
 
-
-# ---------------------------------------------------------------------------
-# Request: what the teacher submits
-# ---------------------------------------------------------------------------
 
 class DifficultyMix(BaseModel):
     easy: float = Field(..., ge=0, le=100)
@@ -108,10 +90,12 @@ class DifficultyMix(BaseModel):
     hard: float = Field(..., ge=0, le=100)
 
     @model_validator(mode="after")
-    def _sums_to_100(self) -> "DifficultyMix":
+    def sums_to_100(self) -> "DifficultyMix":
         total = self.easy + self.medium + self.hard
-        if not (99.0 <= total <= 101.0):  # small rounding tolerance
-            raise ValueError(f"Difficulty mix must sum to 100%, got {total}")
+
+        if abs(total - 100) > 1e-6:
+            raise ValueError(f"Difficulty percentages must sum to 100. Got {total}.")
+
         return self
 
 
@@ -121,10 +105,12 @@ class TopicWeightage(BaseModel):
     biology: float = Field(..., ge=0, le=100)
 
     @model_validator(mode="after")
-    def _sums_to_100(self) -> "TopicWeightage":
+    def sums_to_100(self) -> "TopicWeightage":
         total = self.physics + self.chemistry + self.biology
-        if not (99.0 <= total <= 101.0):
-            raise ValueError(f"Topic weightage must sum to 100%, got {total}")
+
+        if abs(total - 100) > 1e-6:
+            raise ValueError(f"Topic percentages must sum to 100. Got {total}.")
+
         return self
 
 
@@ -134,34 +120,24 @@ class QuestionTypeMix(BaseModel):
     long: float = Field(..., ge=0, le=100)
 
     @model_validator(mode="after")
-    def _sums_to_100(self) -> "QuestionTypeMix":
+    def sums_to_100(self) -> "QuestionTypeMix":
         total = self.mcq + self.short + self.long
-        if not (99.0 <= total <= 101.0):
-            raise ValueError(f"Question-type mix must sum to 100%, got {total}")
+
+        if abs(total - 100) > 1e-6:
+            raise ValueError(f"Question-type percentages must sum to 100. Got {total}.")
+
         return self
 
 
 class PaperRequest(BaseModel):
-    total_marks: int = Field(..., gt=0)
+    total_marks: int = Field(..., gt=0, le=500)
     difficulty_mix: DifficultyMix
     topic_weightage: TopicWeightage
     qtype_mix: QuestionTypeMix
 
-    @field_validator("total_marks")
-    @classmethod
-    def _reasonable_total(cls, v: int) -> int:
-        if v > 500:
-            raise ValueError("total_marks unreasonably large for a single paper")
-        return v
-
-
-# ---------------------------------------------------------------------------
-# Response: what the engine returns
-# ---------------------------------------------------------------------------
 
 class Deviation(BaseModel):
-    """A single documented gap between what was requested and what was produced."""
-    dimension: str  # e.g. "difficulty.easy", "topic.physics", "qtype.short"
+    dimension: str
     requested_pct: float
     actual_pct: float
     reason: str
