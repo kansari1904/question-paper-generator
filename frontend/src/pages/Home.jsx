@@ -55,54 +55,90 @@ function Home() {
 
   const difficultyValid = useMemo(
     () =>
-      Object.values(difficulty).reduce((a, b) => a + b, 0) === 100,
+      Object.values(difficulty).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0
+      ) === 100,
     [difficulty]
   );
 
   const topicsValid = useMemo(
-    () => Object.values(topics).reduce((a, b) => a + b, 0) === 100,
+    () =>
+      Object.values(topics).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0
+      ) === 100,
     [topics]
   );
 
   const questionTypesValid = useMemo(
     () =>
-      Object.values(questionTypes).reduce((a, b) => a + b, 0) === 100,
+      Object.values(questionTypes).reduce(
+        (sum, value) => sum + (Number(value) || 0),
+        0
+      ) === 100,
     [questionTypes]
   );
 
   const formValid =
-    totalMarks > 0 &&
+    Number(totalMarks) > 0 &&
     difficultyValid &&
     topicsValid &&
     questionTypesValid;
+
+  const handleTotalMarksChange = (e) => {
+    const inputValue = e.target.value;
+
+    // Allow the input to be completely empty
+    if (inputValue === "") {
+      setTotalMarks("");
+      return;
+    }
+
+    // Allow digits only
+    if (!/^\d*$/.test(inputValue)) {
+      return;
+    }
+
+    const numberValue = Number(inputValue);
+
+    // Total marks must be greater than 0
+    if (numberValue < 1) {
+      return;
+    }
+
+    setTotalMarks(numberValue);
+  };
 
   const handleGenerate = async (e) => {
     e.preventDefault();
 
     if (!formValid) {
-      toast.error("Please fix the percentage distributions.");
+      toast.error(
+        "Please fix the total marks and percentage distributions."
+      );
       return;
     }
 
     const payload = {
-      total_marks: totalMarks,
+      total_marks: Number(totalMarks),
 
       difficulty_mix: {
-        easy: difficulty.easy,
-        medium: difficulty.medium,
-        hard: difficulty.hard,
+        easy: Number(difficulty.easy) || 0,
+        medium: Number(difficulty.medium) || 0,
+        hard: Number(difficulty.hard) || 0,
       },
 
       topic_weightage: {
-        physics: topics.physics,
-        chemistry: topics.chemistry,
-        biology: topics.biology,
+        physics: Number(topics.physics) || 0,
+        chemistry: Number(topics.chemistry) || 0,
+        biology: Number(topics.biology) || 0,
       },
 
       qtype_mix: {
-        mcq: questionTypes.mcq,
-        short: questionTypes.short,
-        long: questionTypes.long,
+        mcq: Number(questionTypes.mcq) || 0,
+        short: Number(questionTypes.short) || 0,
+        long: Number(questionTypes.long) || 0,
       },
     };
 
@@ -265,16 +301,15 @@ function Home() {
                 <div className="w-full sm:w-32">
                   <div className="relative">
                     <input
-                      type="number"
-                      min="1"
+                      type="text"
+                      inputMode="numeric"
                       value={totalMarks}
-                      onChange={(e) =>
-                        setTotalMarks(Number(e.target.value))
-                      }
-                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 pr-12 text-sm font-semibold text-slate-900 outline-none transition-all focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10"
+                      onChange={handleTotalMarksChange}
+                      placeholder="40"
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 pr-12 text-sm font-semibold text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/10"
                     />
 
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400">
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400">
                       marks
                     </span>
                   </div>
@@ -287,6 +322,7 @@ function Home() {
 
               <div className="grid gap-3 lg:grid-cols-3">
                 {/* Difficulty */}
+
                 <ConstraintSection
                   title="Difficulty Mix"
                   description="Distribute marks by difficulty."
@@ -309,6 +345,7 @@ function Home() {
                 />
 
                 {/* Topics */}
+
                 <ConstraintSection
                   title="Topic Weightage"
                   description="Allocate marks across topics."
@@ -331,6 +368,7 @@ function Home() {
                 />
 
                 {/* Question Types */}
+
                 <ConstraintSection
                   title="Question Type Mix"
                   description="Choose the question format mix."
