@@ -8,12 +8,18 @@ function ConstraintSection({
   values,
   onChange,
 }) {
+  // Treat empty inputs as 0 for calculation
   const total = Object.values(values).reduce(
-    (sum, value) => sum + value,
+    (sum, value) => sum + (Number(value) || 0),
     0
   );
 
   const isValid = total === 100;
+
+  // Check whether every input is completely empty
+  const allEmpty = Object.values(values).every(
+    (value) => value === ""
+  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
@@ -32,12 +38,12 @@ function ConstraintSection({
         {/* Total */}
         <div
           className={`shrink - 0 rounded - md px - 2 py - 1 text - [10px] font - bold ${
-    isValid
-        ? "bg-emerald-50 text-emerald-700"
-        : "bg-amber-50 text-amber-700"
+  isValid
+    ? "bg-emerald-50 text-emerald-700"
+    : "bg-amber-50 text-amber-700"
 } `}
         >
-          {total}%
+          {allEmpty ? "—" : `${ total }% `}
         </div>
       </div>
 
