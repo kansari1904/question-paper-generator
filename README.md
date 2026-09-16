@@ -1,231 +1,1359 @@
-# Smart Question Paper Generator (Science) — Evalvia Intern Assignment
+# SmartPaper — Smart Question Paper Generator
 
-A tool that generates a Science question paper from total marks, difficulty
-mix, topic weightage, and question-type mix — the way a teacher actually
-builds one — and shows the resulting breakdown, including exactly where
-and why it couldn't hit the request perfectly.
+SmartPaper is a constraint-aware question paper generation system that creates structured Maths/Science-style question papers from teacher-defined requirements.
 
-## Stack
+Instead of randomly selecting questions, SmartPaper treats paper generation as a **constraint optimization problem**.
 
-- **Backend:** FastAPI (Python) — the constraint engine and API
-- **Frontend:** React + Tailwind — request form, generated paper view, constraint report, swap
-- **Data:** a single JSON question bank, loaded into memory at startup
-- **LLM:** offline enrichment script (`scripts/enrich_bank.py`) expands the seed bank; never called at runtime
+A teacher can specify:
 
-## Running it
+* Total marks
+* Difficulty distribution
+* Topic weightage
+* Question-type distribution
+
+The system then selects questions from an available question bank while trying to satisfy all requested constraints.
+
+If the requested constraints cannot be satisfied exactly, SmartPaper does not silently ignore them or crash. Instead, it finds the closest feasible solution and reports the deviations to the teacher.
+
+---
+
+## Features
+
+### 1. Constraint-aware paper generation
+
+Teachers can configure:
+
+* Total marks
+* Easy / Medium / Hard distribution
+* Topic weightage
+* MCQ / Short Answer / Long Answer distribution
+
+Example:
+
+```text
+Total Marks: 40
+
+Difficulty:
+Easy    → 30%
+Medium  → 50%
+Hard    → 20%
+
+Topics:
+Physics   → 40%
+Chemistry → 30%
+Biology   → 30%
+
+Question Types:
+MCQ          → 40%
+Short Answer → 40%
+Long Answer  → 20%
+```
+
+The system considers these constraints together instead of solving each one independently.
+
+---
+
+### 2. Constraint validation
+
+Before generating a paper, the backend validates the request.
+
+For example:
+
+```text
+Difficulty:
+30 + 50 + 20 = 100%
+
+Topics:
+40 + 30 + 30 = 100%
+
+Question Types:
+40 + 40 + 20 = 100%
+```
+
+Invalid distributions are rejected at the frontend and backend levels.
+
+The system also checks whether requested question types and marks can actually be produced from the available question bank.
+
+---
+
+### 3. Constraint optimization
+
+The main generation engine uses **Mixed Integer Linear Programming (MILP)** through SciPy.
+
+Each question is represented as a binary decision:
+
+```text
+xᵢ = 1 → question selected
+xᵢ = 0 → question not selected
+```
+
+The solver then decides which combination of questions satisfies the paper requirements.
+
+The optimization considers:
+
+* Total marks
+* Difficulty
+* Topic
+* Question type
+* Available question pool
+
+This allows the system to find a feasible combination instead of simply selecting random questions.
+
+---
+
+### 4. Graceful infeasibility handling
+
+One of the most important parts of the assignment is handling impossible constraints.
+
+For example, suppose the teacher requests:
+
+```text
+20% Hard questions
+```
+
+but the question bank does not contain enough suitable Hard questions.
+
+A naive system might:
+
+* crash
+* return an invalid paper
+* silently ignore the requirement
+
+SmartPaper instead uses deviation variables in the optimization model.
+
+Conceptually:
+
+```text
+Requested value
+       │
+       ▼
+  Optimization
+       │
+       ├── Exact target possible
+       │       ↓
+       │   Meet target
+       │
+       └── Exact target impossible
+               ↓
+        Minimize deviation
+               ↓
+        Report deviation
+```
+
+The generated response contains a constraint report containing:
+
+* Requested total marks
+* Actual total marks
+* Deviations
+* Warnings
+
+The frontend displays these constraint notes to the teacher before continuing to the generated paper.
+
+This makes the behavior transparent instead of silently changing the teacher's requirements.
+
+---
+
+# Architecture
+
+```text
+┌───────────────────────────────┐
+│           React UI            │
+│                               │
+│  Constraint Configuration      │
+│  Paper Preview                 │
+│  Question Swap                 │
+│  PDF Export                    │
+└───────────────┬───────────────┘
+                │
+                │ REST API
+                ▼
+┌───────────────────────────────┐
+│          FastAPI              │
+│                               │
+│  Request Validation            │
+│  Paper Generation API          │
+│  Paper Retrieval               │
+│  Question Swap API             │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│       Constraint Pipeline      │
+│                               │
+│  Validator                     │
+│       ↓                        │
+│  Exact Solver / MILP           │
+│       ↓                        │
+│  Selection Result              │
+│       ↓                        │
+│  Paper Composer                │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│        Question Bank           │
+│                               │
+│  Topic                         │
+│  Difficulty                    │
+│  Question Type                 │
+│  Marks                         │
+│  Options / Answer              │
+└───────────────────────────────┘
+```
+
+---
+
+# Project Structure
+
+```text
+smartpaper/
+│
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   │
+│   │   ├── models/
+│   │   │   └── ...
+│   │   │
+│   │   ├── engine/
+│   │   │   ├── exact_solver.py
+│   │   │   ├── validator.py
+│   │   │   └── composer.py
+│   │   │
+│   │   └── ...
+│   │
+│   ├── tests/
+│   │   └── ...
+│   │
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── ConstraintSection.jsx
+│   │   │   ├── PercentageInput.jsx
+│   │   │   ├── ConstraintModal.jsx
+│   │   │   ├── ConstraintReport.jsx
+│   │   │   ├── PaperHeader.jsx
+│   │   │   ├── PaperSection.jsx
+│   │   │   ├── QuestionCard.jsx
+│   │   │   └── PdfButton.jsx
+│   │   │
+│   │   ├── pages/
+│   │   │   ├── Home.jsx
+│   │   │   └── Paper.jsx
+│   │   │
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   │
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   │
+│   └── package.json
+│
+└── README.md
+```
+
+---
+
+# Core Generation Pipeline
+
+The backend generation process is divided into several stages.
+
+## Stage 1 — Validate Input
+
+The teacher's configuration is received by FastAPI.
+
+Example request:
+
+```json
+{
+  "total_marks": 40,
+  "difficulty_mix": {
+    "easy": 30,
+    "medium": 50,
+    "hard": 20
+  },
+  "topic_weightage": {
+    "physics": 40,
+    "chemistry": 30,
+    "biology": 30
+  },
+  "qtype_mix": {
+    "mcq": 40,
+    "short": 40,
+    "long": 20
+  }
+}
+```
+
+Pydantic models validate the structure and allowed values.
+
+---
+
+# Stage 2 — Validate Question Bank Reachability
+
+The system checks whether the requested question types and marks are compatible with the question bank.
+
+For example:
+
+```text
+MCQ    → 1 mark
+Short  → 3 marks
+Long   → 5 marks
+```
+
+This prevents impossible configurations from being treated as normal generation requests.
+
+---
+
+# Stage 3 — Build the Optimization Model
+
+Each available question becomes a binary decision variable.
+
+For example:
+
+```text
+Question 1 → x₁
+Question 2 → x₂
+Question 3 → x₃
+...
+```
+
+Each variable can only have:
+
+```text
+0 → Do not select
+1 → Select
+```
+
+The solver then searches for the best combination.
+
+---
+
+# Stage 4 — Total Marks Constraint
+
+The selected questions must satisfy the requested total marks.
+
+Conceptually:
+
+```text
+Σ(question_marks × selection_variable)
+= requested_total_marks
+```
+
+For a 40-mark paper:
+
+```text
+Selected marks = 40
+```
+
+This is one of the core hard constraints.
+
+---
+
+# Stage 5 — Difficulty Constraints
+
+The solver calculates the requested target for each difficulty level.
+
+For example:
+
+```text
+Total Marks = 40
+
+Easy   = 30% → 12 marks
+Medium = 50% → 20 marks
+Hard   = 20% → 8 marks
+```
+
+The solver attempts to select questions whose marks distribution matches these targets.
+
+---
+
+# Stage 6 — Topic Constraints
+
+The same process is applied to topics.
+
+For example:
+
+```text
+Physics   = 40% → 16 marks
+Chemistry = 30% → 12 marks
+Biology   = 30% → 12 marks
+```
+
+The solver considers topic and difficulty simultaneously.
+
+This is important because constraints can interact.
+
+For example:
+
+```text
+Physics + Hard
+```
+
+may have fewer available questions than:
+
+```text
+Physics + Easy
+```
+
+The solver therefore needs to consider the complete combination instead of treating every distribution separately.
+
+---
+
+# Stage 7 — Question-Type Constraints
+
+Question types also have fixed marks.
+
+Current configuration:
+
+```text
+MCQ          → 1 mark
+Short Answer → 3 marks
+Long Answer  → 5 marks
+```
+
+The solver selects an appropriate combination while considering the requested question-type distribution.
+
+For example:
+
+```text
+MCQ          → 40%
+Short Answer → 40%
+Long Answer  → 20%
+```
+
+The actual selected paper is determined by the available question bank and the mathematical constraints.
+
+---
+
+# Stage 8 — Objective Function
+
+When exact constraints cannot all be satisfied, deviation variables are introduced.
+
+Conceptually:
+
+```text
+deviation = |actual - requested|
+```
+
+The optimization objective is to minimize the total deviation.
+
+Therefore:
+
+```text
+Minimize:
+
+difficulty deviation
++ topic deviation
++ question-type deviation
+```
+
+A small random tie-breaker is also used so that equally good solutions can vary based on the generation seed.
+
+This provides deterministic generation when a seed is supplied while still allowing different valid papers to be generated.
+
+---
+
+# Stage 9 — Paper Composition
+
+The solver produces a selected set of question IDs.
+
+However, a set of questions alone does not look like a real exam paper.
+
+Therefore, SmartPaper has a separate **composer stage**.
+
+The composer:
+
+1. Groups questions by question type.
+2. Creates sections.
+3. Adds section instructions.
+4. Calculates section mark subtotals.
+5. Orders sections logically.
+6. Orders questions consistently.
+
+The current section structure is:
+
+```text
+SECTION A — MCQ
+
+SECTION B — SHORT ANSWER
+
+SECTION C — LONG ANSWER
+```
+
+This separation between **selection** and **composition** is intentional.
+
+The solver decides:
+
+> Which questions should be selected?
+
+The composer decides:
+
+> How should those questions be presented to a teacher/student?
+
+---
+
+# Why Separate Solver and Composer?
+
+This is an important architectural decision.
+
+A solver should focus on mathematical feasibility.
+
+A composer should focus on presentation.
+
+If these responsibilities were mixed together, the generation logic would become harder to maintain.
+
+Instead:
+
+```text
+Selection
+   ↓
+Question IDs
+   ↓
+Composition
+   ↓
+Teacher-friendly paper
+```
+
+This makes it easier to change the paper format without changing the optimization algorithm.
+
+---
+
+# Question Swapping
+
+SmartPaper also supports replacing one question without regenerating the entire paper.
+
+API:
+
+```http
+POST /paper/swap
+```
+
+Request:
+
+```json
+{
+  "paper_id": "...",
+  "question_id": "..."
+}
+```
+
+The backend searches for an unused compatible question and replaces the selected question.
+
+The frontend then updates:
+
+```text
+questions
++
+section question_ids
+```
+
+without rebuilding the entire paper.
+
+This matches the teacher workflow described in the assignment:
+
+> "Can a teacher regenerate / swap one question without redoing the whole paper?"
+
+---
+
+# Paper Structure
+
+The generated paper is intentionally designed to look like an actual examination paper rather than a dashboard.
+
+It contains:
+
+* Paper title
+* Subject
+* Total marks
+* Number of questions
+* Student name
+* Roll number
+* Date
+* Class
+* General instructions
+* Section headings
+* Question numbers
+* Marks per question
+* MCQ options
+* Section mark subtotals
+
+Example:
+
+```text
+                    QUESTION PAPER
+
+Subject: General Science          Total Marks: 40
+
+Name: ___________________         Roll No: __________
+
+Date: ___________________         Class: ____________
+
+GENERAL INSTRUCTIONS
+
+1. Read all questions carefully before answering.
+2. Answer all questions according to the instructions.
+3. Marks allotted to each question are indicated.
+
+----------------------------------------------------
+
+SECTION A — MCQ                              16 Marks
+
+1. Which of the following...                    [1 Mark]
+
+   A. ...
+   B. ...
+   C. ...
+   D. ...
+
+----------------------------------------------------
+
+SECTION B — SHORT ANSWER                      12 Marks
+
+17. Explain the process of...                   [3 Marks]
+
+----------------------------------------------------
+
+SECTION C — LONG ANSWER                       12 Marks
+
+21. Describe and explain...                     [5 Marks]
+```
+
+---
+
+# PDF Export
+
+The frontend also provides PDF export.
+
+The PDF implementation uses:
+
+* `html2canvas`
+* `jsPDF`
+
+Instead of simply taking one screenshot of the entire page, the application creates a PDF-specific representation and handles pagination.
+
+Question cards are measured and positioned so that questions and their options are kept together as much as possible.
+
+This helps avoid situations where:
+
+```text
+Question
+---------
+page break
+---------
+Options
+```
+
+appear on different pages.
+
+The generated file is:
+
+```text
+smartpaper-question-paper.pdf
+```
+
+---
+
+# API Endpoints
+
+## Generate Paper
+
+```http
+POST /paper/generate?seed=42
+```
+
+Generates a new question paper.
+
+---
+
+## Get Paper
+
+```http
+GET /paper/{paper_id}
+```
+
+Returns a previously generated paper.
+
+---
+
+## Swap Question
+
+```http
+POST /paper/swap
+```
+
+Replaces one selected question with another compatible unused question.
+
+---
+
+# Example Generate Request
+
+```json
+{
+  "total_marks": 40,
+  "difficulty_mix": {
+    "easy": 30,
+    "medium": 50,
+    "hard": 20
+  },
+  "topic_weightage": {
+    "physics": 40,
+    "chemistry": 30,
+    "biology": 30
+  },
+  "qtype_mix": {
+    "mcq": 40,
+    "short": 40,
+    "long": 20
+  }
+}
+```
+
+---
+
+# Example Response Concept
+
+```json
+{
+  "paper_id": "...",
+  "total_marks": 40,
+  "questions": [],
+  "sections": [],
+  "constraint_report": {
+    "requested_total_marks": 40,
+    "actual_total_marks": 40,
+    "deviations": [],
+    "warnings": []
+  }
+}
+```
+
+The `constraint_report` makes the solver's result transparent to the frontend.
+
+---
+
+# Why I Used Optimization Instead of an LLM
+
+The central problem is not:
+
+> "Write a question."
+
+The central problem is:
+
+> "Select a combination of existing questions that satisfies multiple mathematical constraints."
+
+For this reason, a deterministic optimization approach is more appropriate for the core generation engine.
+
+### Optimization provides
+
+* Deterministic constraint handling
+* Exact total-mark control
+* Explicit infeasibility handling
+* Reproducibility through seeds
+* Transparent deviation reporting
+* Easier testing
+
+### Where an LLM could help
+
+An LLM could be useful for:
+
+* Generating new questions
+* Rewriting questions
+* Creating question variations
+* Generating explanations
+* Enriching a question bank
+* Creating questions from a syllabus/topic description
+
+However, the LLM should not be responsible for guaranteeing the mathematical constraints.
+
+A future architecture could therefore be:
+
+```text
+LLM
+ │
+ ├── Generate / enrich questions
+ │
+ ▼
+Question Bank
+ │
+ ▼
+MILP Solver
+ │
+ ▼
+Final Paper
+```
+
+This would combine generative AI with deterministic constraint satisfaction.
+
+---
+
+# Handling Impossible Constraints
+
+This was one of the main challenges of the assignment.
+
+Suppose the teacher requests:
+
+```text
+40 marks
+
+Hard = 20%
+```
+
+which means approximately:
+
+```text
+8 marks of Hard questions
+```
+
+But the available question bank may not contain enough suitable Hard questions.
+
+SmartPaper does not simply ignore the requirement.
+
+Instead:
+
+```text
+Requested constraints
+        ↓
+Check available questions
+        ↓
+Build optimization model
+        ↓
+Find feasible combination
+        ↓
+Minimize deviations
+        ↓
+Return constraint report
+```
+
+The frontend then informs the teacher that the generated paper contains constraint notes.
+
+This is preferable to silently changing the requested distribution.
+
+---
+
+# Technology Stack
+
+## Frontend
+
+* React
+* React Router
+* Tailwind CSS
+* Lucide React
+* React Hot Toast
+* html2canvas
+* jsPDF
+
+## Backend
+
+* Python
+* FastAPI
+* Pydantic
+* SciPy
+* NumPy
+
+## Optimization
+
+* Mixed Integer Linear Programming
+* Binary decision variables
+* Constraint equations
+* Deviation variables
+* Objective minimization
+
+---
+
+# Why FastAPI?
+
+FastAPI was chosen because the backend is primarily an API-driven service.
+
+Advantages:
+
+* Automatic request validation
+* Pydantic integration
+* Automatic OpenAPI/Swagger documentation
+* Type hints
+* Simple REST endpoint implementation
+* Good fit for Python optimization libraries
+
+Swagger documentation is available through FastAPI's built-in API documentation during development.
+
+---
+
+# Why React?
+
+React provides a clean way to manage:
+
+* Constraint input state
+* Validation state
+* Loading state
+* Generated paper state
+* Swap state
+* Constraint warning modal
+* Responsive paper preview
+
+The application separates reusable UI components from page-level logic.
+
+---
+
+# Frontend Component Architecture
+
+```text
+Home
+│
+├── Navbar
+├── ConstraintSection
+│   └── PercentageInput
+├── ConstraintModal
+│
+└── Paper
+    ├── PaperHeader
+    ├── PaperSection
+    │   └── QuestionCard
+    ├── ConstraintReport
+    └── PdfButton
+```
+
+This keeps individual UI responsibilities small and reusable.
+
+---
+
+# Backend Architecture
+
+The backend separates the main responsibilities into different stages.
+
+```text
+API Layer
+   │
+   ▼
+Validation
+   │
+   ▼
+Question Selection / Solver
+   │
+   ▼
+Selection Result
+   │
+   ▼
+Composer
+   │
+   ▼
+Paper Response
+```
+
+Important backend modules include:
+
+```text
+validator.py
+exact_solver.py
+composer.py
+```
+
+### `validator.py`
+
+Responsible for validating the generation request and checking basic feasibility/reachability.
+
+### `exact_solver.py`
+
+Responsible for the mathematical optimization problem.
+
+It creates the MILP model, applies constraints, minimizes deviations, and returns the selected questions.
+
+### `composer.py`
+
+Responsible for converting the selected question IDs into a teacher-friendly paper structure.
+
+---
+
+# Testing
+
+The backend includes automated tests for core functionality.
+
+The goal is to test things such as:
+
+* Request validation
+* Solver behavior
+* Paper generation
+* Constraint handling
+* Invalid configurations
+* API behavior
+
+Testing the solver separately from the presentation layer also makes the core generation logic easier to verify.
+
+---
+
+# Current Limitations
+
+The current implementation intentionally keeps the scope small.
+
+### 1. Question bank is limited
+
+The quality of generated papers depends heavily on the available question bank.
+
+If the bank does not contain enough questions for a requested combination, the solver can only find the closest feasible result.
+
+With more time, I would build a larger and more diverse question bank.
+
+---
+
+### 2. In-memory storage
+
+Generated papers are currently stored in memory.
+
+This means data will not persist after the backend restarts.
+
+A production version could use:
+
+```text
+PostgreSQL
++
+SQLAlchemy
+```
+
+for persistent storage.
+
+---
+
+### 3. Limited subject/topic configuration
+
+The current demo uses a predefined set of topics and question types.
+
+A future version could allow teachers to:
+
+* Create subjects
+* Add topics
+* Upload question banks
+* Define custom marks
+* Define custom question types
+
+---
+
+### 4. Question generation is not yet dynamic
+
+The current core system selects questions from an existing question bank.
+
+A future version could use an LLM to generate new questions when the existing pool is insufficient.
+
+The generated questions would still need to pass validation before entering the solver's question pool.
+
+---
+
+### 5. Swap availability depends on the question bank
+
+A swap is only possible when a suitable unused alternative exists.
+
+If no compatible question is available, the system reports the failure instead of producing an invalid replacement.
+
+---
+
+# What I Am Proud Of
+
+The part I am most proud of is the **constraint-handling architecture**.
+
+Instead of implementing something like:
+
+```python
+random.choice(questions)
+```
+
+the system models paper generation as an optimization problem.
+
+The solver simultaneously considers:
+
+```text
+Total Marks
+     +
+Difficulty
+     +
+Topics
+     +
+Question Types
+     +
+Question Availability
+```
+
+and produces a measurable constraint report.
+
+I also separated **question selection from paper composition**, which allows the system to solve the mathematical problem first and then turn the result into a realistic examination paper.
+
+---
+
+# What Is Still Weak
+
+The weakest part of the current implementation is the **limited question bank and persistence layer**.
+
+The optimization engine can only work with the questions available to it.
+
+A larger production system would need:
+
+* A persistent database
+* A much larger question bank
+* Better question metadata
+* Duplicate detection
+* Difficulty calibration
+* Subject/syllabus management
+* Teacher authentication
+* Persistent generated-paper history
+
+The current implementation intentionally focuses on solving the core assignment problem rather than building a complete education platform.
+
+---
+
+# Future Improvements
+
+With more development time, I would add:
+
+### Question Bank Management
+
+```text
+Upload CSV / Excel / JSON
+        ↓
+Validate Questions
+        ↓
+Store in Database
+        ↓
+Index by Metadata
+```
+
+### AI Question Generation
+
+Use an LLM to generate questions based on:
+
+* Subject
+* Topic
+* Difficulty
+* Question type
+* Learning objective
+
+Then validate and add them to the question bank.
+
+### Persistent Storage
+
+Move from:
+
+```text
+In-memory storage
+```
+
+to:
+
+```text
+PostgreSQL
+```
+
+with models for:
+
+* Users
+* Subjects
+* Topics
+* Questions
+* Question Banks
+* Generated Papers
+* Paper Questions
+
+### Better Teacher Controls
+
+Allow teachers to configure:
+
+* Custom subjects
+* Custom topics
+* Custom question types
+* Section ordering
+* Instructions
+* Negative marking
+* Optional questions
+* Question numbering
+
+---
+
+# Running Locally
+
+## Prerequisites
+
+Install:
+
+* Python 3.11+
+* Node.js 18+
+* npm
+
+---
+
+## Backend Setup
+
+Navigate to the backend:
+
+```bash
+cd backend
+```
+
+Create a virtual environment:
+
+```bash
+python -m venv venv
+```
+
+Activate it on Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the FastAPI server:
+
+```bash
+uvicorn app.main:app --reload
+```
 
 Backend:
+
+```text
+http://127.0.0.1:8000
 ```
-cd backend
-pip install fastapi uvicorn pydantic --break-system-packages
-uvicorn main:app --reload --port 8000
+
+API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+## Frontend Setup
+
+Navigate to the frontend:
+
+```bash
+cd frontend
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Create `.env`:
+
+```env
+VITE_BASE_URL=http://127.0.0.1:8000
+```
+
+Start the development server:
+
+```bash
+npm run dev
 ```
 
 Frontend:
-```
-cd frontend
-npm install
-npm run dev
-```
-The Vite dev server proxies `/api/*` to `http://localhost:8000` (see
-`vite.config.js`), so the two just need to run side by side — no CORS
-setup needed beyond what's already in `main.py`.
 
-## Project structure
-
-```
-backend/
-├── main.py                 # FastAPI routes — thin, no business logic
-├── models.py                # Pydantic schema for everything
-├── data/
-│   └── question_bank.json   # seed + LLM-enriched Science questions
-├── scripts/
-│   └── enrich_bank.py       # offline LLM expansion of the seed bank
-├── engine/
-│   ├── validator.py         # Stage 0 — input validation
-│   ├── feasibility.py       # Stage 2 — bank supply vs. requested targets
-│   ├── matrix_fit.py        # Stage 3 — capped IPF target matrix
-│   ├── selector.py          # Stage 4 — fills the matrix with real questions
-│   ├── resolver.py          # Stage 5 — builds the honest constraint report
-│   ├── composer.py          # Stage 6 — sections, ordering, interleaving
-│   └── swap.py               # Stage 7 — single-question swap
-frontend/
-├── index.html
-├── package.json
-├── vite.config.js
-└── src/
-    ├── main.jsx
-    ├── App.jsx
-    ├── api.js
-    ├── index.css
-    └── components/
-        ├── ConstraintForm.jsx
-        ├── PaperView.jsx
-        ├── QuestionCard.jsx
-        └── ConstraintReport.jsx
+```text
+http://localhost:5173
 ```
 
-## Assumptions
+---
 
-- **Marks scheme:** MCQ = 1 mark, Short Answer = 3 marks, Long Answer = 5
-  marks. Chosen for a clean split across three sections and enough
-  granularity (1/3/5) that exact-total reconciliation is usually possible
-  using MCQs as the fine-tuning unit.
-- **Subject scope:** Science only (Physics, Chemistry, Biology), per the
-  assignment's option to focus on one subject.
-- **Percentages are computed against total marks**, not question count, and
-  the generated paper always matches the requested total exactly whenever
-  the bank makes that possible (see below for when it isn't).
-- **Question bank size:** 46 hand-written questions, with a deliberately
-  thin pool for Physics/Hard (9 marks total, vs. 13–18 for every other
-  topic/difficulty cell) so the constraint engine has a real, demonstrable
-  scarcity case rather than a hypothetical one.
+# End-to-End Flow
 
-## Approach — pure logic, and why
+The complete user journey is:
 
-The entire constraint engine (Stages 0–7) is deterministic Python — no LLM
-calls at runtime. This was a deliberate choice, not a default:
+```text
+1. Teacher opens SmartPaper
+            ↓
+2. Enters total marks
+            ↓
+3. Configures difficulty distribution
+            ↓
+4. Configures topic weightage
+            ↓
+5. Configures question-type distribution
+            ↓
+6. Frontend validates input
+            ↓
+7. FastAPI receives request
+            ↓
+8. Backend validates constraints
+            ↓
+9. MILP solver selects questions
+            ↓
+10. Deviations are calculated
+            ↓
+11. Composer builds paper sections
+            ↓
+12. Frontend displays realistic paper
+            ↓
+13. Teacher can swap a question
+            ↓
+14. Teacher can export PDF
+```
 
-- **Auditability.** A teacher (or a grader) needs to trust *why* a paper
-  came out the way it did. A deterministic pipeline can point to an exact
-  cell, an exact shortfall, an exact substitution. An LLM making runtime
-  selection decisions can't be interrogated that way, and would risk
-  silently inventing a plausible-sounding but wrong justification.
-- **Reproducibility.** The same request with the same seed always produces
-  the same paper. That matters for debugging, for grading, and for a
-  teacher who wants to regenerate deliberately rather than by chance.
-- **The problem is genuinely a constraint-satisfaction problem**, not a
-  generation problem — three marginal distributions intersecting over a
-  finite bank is a solved category of problem (transportation / IPF /
-  apportionment), and reaching for an LLM to approximate it would be worse
-  on every axis: slower, non-reproducible, harder to test, and no more
-  correct.
+---
 
-**Where an LLM *would* fit** (not yet implemented — see below): offline
-enrichment of the question bank itself — generating more phrasings,
-subtopics, and difficulty variants from the 46 seed questions, so the
-constraint engine has a richer pool to work with. That's a data-generation
-problem, which LLMs are well suited to, kept entirely separate from the
-runtime decision-making, which they are not.
+# Design Philosophy
 
-## How "constraints don't fit" is handled
+The project follows three main principles:
 
-This is the actual hard part of the assignment, and it's handled in layers
-rather than one big check:
+### Correctness
 
-1. **Feasibility check (Stage 2)** runs *before* any question is picked,
-   comparing requested marks against real bank supply at three levels: per
-   topic, per difficulty, per qtype, and per (topic, difficulty, qtype)
-   cell. Every genuine shortfall is recorded as a `Gap` with a concrete
-   reason — nothing is discovered mid-generation.
-2. **Matrix fitting (Stage 3)** uses a capped version of Iterative
-   Proportional Fitting to compute the best achievable
-   (topic × difficulty × qtype) marks matrix, clipping every cell to real
-   supply during the fit itself — so the "ideal" target the selector works
-   toward is already constraint-aware, not aspirational.
-3. **Selection (Stage 4)** fills that matrix with real questions, and
-   redistributes any remaining shortfall to the closest substitute cell, in
-   a documented priority order:
+The system should respect mathematical constraints whenever the question bank allows it.
 
-   **Total marks > Topic weightage > Question-type mix > Difficulty mix**
+### Transparency
 
-   Reasoning: total marks is graded against a fixed scale and must be
-   exact. Topic weightage is usually syllabus-mandated by the school —
-   the most rigid *pedagogical* constraint after marks. Question-type mix
-   is a formatting choice. Difficulty mix is the most negotiable — a
-   paper slightly easier or harder than requested is a smaller problem for
-   a teacher than one that under-represents a mandated topic or misses the
-   total. Concretely: a shortfall is first absorbed by shifting difficulty
-   within the same topic, before it's ever allowed to shift topic.
-4. **Reporting (Stage 5)** never stays silent about a deviation. Every gap
-   above a small tolerance becomes a `Deviation` with requested %, actual
-   %, and — critically — an *honest* cause: it only blames "bank limit"
-   when there's real evidence (a feasibility gap, an unmet cell, a logged
-   substitution); otherwise it correctly attributes the gap to the
-   selection algorithm's own trade-offs (see the bug log below). Rejecting
-   the request outright was considered and rejected as a design: a teacher
-   gets more value from a transparent best-effort paper with a clear
-   report than from a bare error message.
+When constraints cannot be satisfied exactly, the system should tell the teacher instead of silently changing the requirements.
 
-## Question swap
+### Teacher-friendly output
 
-A swap never re-runs the full pipeline — it's an isolated, near-instant
-lookup (`engine/swap.py`, `POST /swap`). It tries, in order: an exact
-same-topic/same-difficulty/same-qtype match; same topic with adjacent
-difficulty; same difficulty with a different topic; any cell with the same
-qtype. It never falls back to a different qtype, because that would
-silently change the question's marks value and therefore the paper's
-total — swap preserves total marks unconditionally. If nothing is left
-anywhere in the bank for that qtype, it fails with a specific, actionable
-explanation rather than duplicating a question or crashing.
+The final result should look and behave like a real question paper rather than a raw list of selected questions.
 
-## Bugs caught during development (kept in, not smoothed over)
+---
 
-Testing each stage in isolation surfaced two real problems worth
-documenting rather than hiding:
+# Assignment Requirements Mapping
 
-1. **Feasibility false positives.** The first version of the cell-level
-   feasibility check flagged sub-question-sized rounding gaps as
-   "infeasible" even on a perfectly satisfiable request. Fixed by only
-   surfacing a cell gap when the shortfall is at least one whole
-   question's worth of marks.
-2. **A real marks-loss bug in selection.** Rounding each of the 27
-   (topic × difficulty × qtype) cells to the nearest question
-   *independently* silently discarded ~30% of the total marks on a typical
-   request, because most individual cell targets fall below one question's
-   value when split 27 ways. This is exactly the "silently ignoring the
-   constraint" failure the assignment warns against, just hiding one layer
-   deeper than the obvious case. Fixed with a largest-remainder
-   apportionment pass (the same method used to fairly allocate
-   parliamentary seats from vote shares): floor every cell, then hand the
-   recovered marks to the cells with the largest leftover fraction first.
+| Assignment Requirement | SmartPaper Implementation                  |
+| ---------------------- | ------------------------------------------ |
+| Total marks            | Implemented                                |
+| Difficulty mix         | Implemented                                |
+| Topic weightage        | Implemented                                |
+| Question-type mix      | Implemented                                |
+| Valid paper generation | MILP-based solver                          |
+| Impossible constraints | Deviation minimization + constraint report |
+| Graceful handling      | Warning/deviation modal                    |
+| Real paper structure   | Dedicated composer                         |
+| Question swapping      | `/paper/swap`                              |
+| Resulting breakdown    | Constraint report                          |
+| PDF export             | html2canvas + jsPDF                        |
+| Responsive UI          | React + Tailwind CSS                       |
 
-## Where it falls short, and what I'd do with more time
+---
 
-- **Selector Pass 2 still drifts on individual axes.** The largest-remainder
-  bump-up (above) correctly fixes the *total*-marks loss, but it ranks
-  candidate bumps by each cell's own fractional remainder, not by combined
-  distance-to-target across all three axes at once. In testing, this
-  produced 8–12 percentage-point swings on individual topic/qtype shares
-  even when the bank had zero real scarcity. The resolver now reports this
-  honestly (see bug log) rather than mislabeling it as a bank limit, but
-  the underlying algorithm should be improved to rank bumps by combined
-  cross-axis error, not just local remainder.
-- **Bank enrichment hasn't actually been run.** `scripts/enrich_bank.py`
-  is written and its merge/validation logic is tested (with a fake model
-  function standing in for the real API call, since this environment has
-  no `ANTHROPIC_API_KEY`), but it hasn't been run against the live
-  Anthropic API, so the bank shipped here is still the 46 hand-written
-  seed questions only.
-- **In-memory paper storage.** `PAPERS` lives in a Python dict in
-  `main.py`; a restart loses every generated paper. Fine for this
-  assignment's scope, not production-ready.
-- **`/paper/{id}` after a swap** rebuilds the constraint report using an
-  empty feasibility/matrix pair, reasoning that a swap can only substitute
-  within the same qtype and so can't introduce a new feasibility gap. This
-  is a deliberate simplification for scope, not an oversight, but a more
-  thorough version would recompute feasibility against the live bank.
-- **No screenshot of the frontend.** The React app builds cleanly
-  (`npm run build`, zero errors) and the generate → swap → refetch flow is
-  wired against the real API, but this environment has no way to launch a
-  headless browser, so the visual layout hasn't actually been eyeballed —
-  worth a quick manual check before considering the UI done.
+# Conclusion
 
-## One thing I'm proud of
+SmartPaper demonstrates that question-paper generation can be modeled as a **constraint optimization problem rather than simple random selection**.
 
-Catching the largest-remainder rounding bug through actual testing, not
-code review. It didn't look like a bug — `round()` on 27 independent cells
-looks completely reasonable until you run it against a real bank and see
-40 marks turn into 29. Testing every stage in isolation with real data,
-rather than trusting each module once it "looked right," is what caught
-it — and the fix (apportionment via largest remainder) is the textbook
-correct tool for exactly this class of problem.
+The system combines:
 
-## One thing that's still weak
+```text
+React
++
+FastAPI
++
+Pydantic
++
+MILP Optimization
++
+Question Bank
++
+Paper Composition
++
+PDF Export
+```
 
-The Pass 2 apportionment drift described above. It's diagnosed precisely
-and honestly reported, but not yet fixed — the correct fix (rank bumps by
-combined multi-axis error) is a real rewrite of the selector's
-redistribution logic, not a small patch, and I ran out of scope to do it
-properly rather than rushing a partial fix that might introduce a new,
-less-understood bug.
+The most important architectural decision is keeping **constraint satisfaction deterministic** while keeping the UI and paper composition flexible.
+
+An LLM can be introduced later for question generation and enrichment, but the mathematical guarantee of the paper remains the responsibility of the optimization engine.
